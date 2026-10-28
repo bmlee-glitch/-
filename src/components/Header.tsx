@@ -1,5 +1,5 @@
 import React from 'react';
-import { Volume2, Sparkles, BookOpen, Search, HelpCircle, Settings2 } from 'lucide-react';
+import { Volume2, Sparkles, BookOpen, Search, HelpCircle, Settings2, Key } from 'lucide-react';
 
 interface HeaderProps {
   activeTab: 'search' | 'vocab' | 'studied' | 'quiz';
@@ -10,6 +10,8 @@ interface HeaderProps {
   setSpeechAccent: (accent: 'en-US' | 'en-GB') => void;
   speechRate: number;
   setSpeechRate: (rate: number) => void;
+  onOpenApiKeyModal: () => void;
+  hasCustomApiKey: boolean;
 }
 
 export const Header: React.FC<HeaderProps> = ({
@@ -21,6 +23,8 @@ export const Header: React.FC<HeaderProps> = ({
   setSpeechAccent,
   speechRate,
   setSpeechRate,
+  onOpenApiKeyModal,
+  hasCustomApiKey,
 }) => {
   const [showSettings, setShowSettings] = React.useState(false);
 
@@ -124,8 +128,27 @@ export const Header: React.FC<HeaderProps> = ({
             <span className="sm:hidden">퀴즈</span>
           </button>
 
+          {/* API Key Modal Button */}
+          <button
+            onClick={onOpenApiKeyModal}
+            className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-bold transition-all border ${
+              hasCustomApiKey
+                ? 'bg-emerald-50 border-emerald-300 text-emerald-750'
+                : 'bg-amber-50 border-amber-300 text-amber-800 hover:bg-amber-100'
+            }`}
+            title="Gemini API 키 직접 설정"
+          >
+            <Key className="w-3.5 h-3.5 text-indigo-600" />
+            <span className="hidden sm:inline">API 키</span>
+            <span
+              className={`w-2 h-2 rounded-full ${
+                hasCustomApiKey ? 'bg-emerald-500' : 'bg-amber-500 animate-pulse'
+              }`}
+            ></span>
+          </button>
+
           {/* Settings Button */}
-          <div className="relative ml-1 sm:ml-2">
+          <div className="relative ml-0.5 sm:ml-1">
             <button
               onClick={() => setShowSettings(!showSettings)}
               title="발음 및 음성 설정"

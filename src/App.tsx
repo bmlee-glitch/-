@@ -8,8 +8,10 @@ import { QuizView } from './components/QuizView';
 import { CuratedDiscovery } from './components/CuratedDiscovery';
 import { SpeakingModal } from './components/SpeakingModal';
 import { RewriteExampleModal } from './components/RewriteExampleModal';
+import { ApiKeyModal } from './components/ApiKeyModal';
 import { WordAnalysis, SavedWord, StudiedSentence, ExampleItem } from './types';
-import { AlertCircle, Loader2, Sparkles } from 'lucide-react';
+import { analyzeWord, getStoredApiKey } from './services/geminiService';
+import { AlertCircle, Loader2, Sparkles, Key } from 'lucide-react';
 
 const SAVED_WORDS_STORAGE_KEY = 'wordflow_saved_words_v1';
 const STUDIED_SENTENCES_STORAGE_KEY = 'wordflow_studied_sentences_v1';
@@ -22,6 +24,11 @@ export default function App() {
   const [analysisData, setAnalysisData] = useState<WordAnalysis | null>(null);
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+
+  // Gemini API Key state (for Netlify and user-provided key)
+  const [userApiKey, setUserApiKey] = useState<string>('');
+  const [isApiKeyModalOpen, setIsApiKeyModalOpen] = useState<boolean>(false);
+  const [apiKeyModalNotice, setApiKeyModalNotice] = useState<string>('');
 
   // Settings
   const [speechAccent, setSpeechAccent] = useState<'en-US' | 'en-GB'>('en-US');
@@ -75,6 +82,11 @@ export default function App() {
       if (storedRate) {
         setSpeechRate(parseFloat(storedRate));
       }
+
+      const storedKey = getStoredApiKey();
+      if (storedKey) {
+        setUserApiKey(storedKey);
+      }
     } catch (e) {
       console.warn('Failed to load local storage state:', e);
     }
@@ -109,7 +121,7 @@ export default function App() {
     localStorage.setItem(SPEECH_RATE_KEY, rate.toString());
   };
 
-  // Perform word search with robust JSON & error handling
+  // Perform word search using hybrid geminiService (supporting Netlify & AI Studio)
   const handleSearchWord = async (word: string) => {
     if (!word || !word.trim()) return;
     const cleanWord = word.trim();
@@ -119,34 +131,22 @@ export default function App() {
     setActiveTab('search');
 
     try {
-      const res = await fetch('/api/analyze-word', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ word: cleanWord }),
-      });
-
-      const text = await res.text();
-      let json: any;
-      try {
-        json = JSON.parse(text);
-      } catch (parseError) {
-        throw new Error(
-          '서버 응답을 처리하는 중 문제가 발생했습니다. (응답 내용: ' +
-            (text ? text.slice(0, 80) : '빈 응답') +
-            ')'
-        );
-      }
-
-      if (!res.ok || !json.success) {
-        throw new Error(json.error || '단어를 분석하지 못했습니다.');
-      }
-
-      setAnalysisData(json.data);
+      const data = await analyzeWord(cleanWord, userApiKey);
+      setAnalysisData(data);
     } catch (err: any) {
       console.error('Search error:', err);
-      setErrorMessage(
-        err.message || '단어 분석 중 문제가 발생했습니다. 잠시 후 다시 시도해주세요.'
-      );
+      const msg = err.message || '';
+      if (msg.includes('STATIC_HOST_NEEDS_API_KEY')) {
+        setApiKeyModalNotice(
+          'Netlify 등 외부 웹사이트에서는 백엔드 서버가 없으므로 본인의 Gemini API 키를 직접 입력해주셔야 정상 동작합니다.'
+        );
+        setIsApiKeyModalOpen(true);
+        setErrorMessage(
+          'Netlify 등 정적 호스팅 환경입니다. 상단의 [API 키] 버튼을 눌러 본인의 Gemini API 키를 입력하시면 즉시 정상 작동합니다.'
+        );
+      } else {
+        setErrorMessage(msg || '단어 분석 중 문제가 발생했습니다. 잠시 후 다시 시도해주세요.');
+      }
     } finally {
       setIsLoading(false);
     }
@@ -301,6 +301,11 @@ export default function App() {
         setSpeechAccent={handleSetAccent}
         speechRate={speechRate}
         setSpeechRate={handleSetRate}
+        onOpenApiKeyModal={() => {
+          setApiKeyModalNotice('');
+          setIsApiKeyModalOpen(true);
+        }}
+        hasCustomApiKey={Boolean(userApiKey)}
       />
 
       {/* Main Container */}
@@ -342,13 +347,25 @@ export default function App() {
             <AlertCircle className="w-5 h-5 text-rose-500 shrink-0 mt-0.5" />
             <div className="flex-1 text-xs sm:text-sm">
               <p className="font-bold mb-1">단어 분석 안내</p>
-              <p>{errorMessage}</p>
-              <button
-                onClick={() => handleSearchWord(searchedWord)}
-                className="mt-2 text-xs font-bold text-rose-700 underline hover:text-rose-900"
-              >
-                다시 시도하기
-              </button>
+              <p className="leading-relaxed">{errorMessage}</p>
+              <div className="flex flex-wrap items-center gap-3 mt-3">
+                <button
+                  onClick={() => handleSearchWord(searchedWord)}
+                  className="px-3 py-1.5 rounded-lg bg-rose-600 hover:bg-rose-700 text-white font-bold text-xs transition-colors"
+                >
+                  다시 시도하기
+                </button>
+                <button
+                  onClick={() => {
+                    setApiKeyModalNotice('Netlify 환경에서는 본인의 Gemini API 키를 입력하셔야 백엔드 없이도 즉시 동작합니다.');
+                    setIsApiKeyModalOpen(true);
+                  }}
+                  className="px-3 py-1.5 rounded-lg bg-white border border-rose-300 text-rose-700 hover:bg-rose-100/50 font-bold text-xs flex items-center gap-1.5 transition-colors"
+                >
+                  <Key className="w-3.5 h-3.5" />
+                  <span>Gemini API 키 직접 입력하기</span>
+                </button>
+              </div>
             </div>
           </div>
         )}
@@ -445,6 +462,14 @@ export default function App() {
         onSaveToVault={handleSaveToVault}
         speechAccent={speechAccent}
         speechRate={speechRate}
+      />
+
+      {/* Gemini API Key Modal (for Netlify / user custom key) */}
+      <ApiKeyModal
+        isOpen={isApiKeyModalOpen}
+        onClose={() => setIsApiKeyModalOpen(false)}
+        onKeySaved={(key) => setUserApiKey(key)}
+        initialMessage={apiKeyModalNotice}
       />
     </div>
   );

@@ -1,0 +1,6 @@
+{
+  "name": "WordFlow - AI 영어 단어 & 예문 번역기",
+  "description": "영어 단어를 음성이나 텍스트로 말하면 Gemini AI가 품사, 발음기호, 뉘앙스 해설, 상황별 예문과 자연스러운 한글 번역을 완벽하게 분석해주는 스마트 단어 학습 앱",
+  "requestFramePermissions": ["microphone"],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

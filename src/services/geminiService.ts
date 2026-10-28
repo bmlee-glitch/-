@@ -1,36 +1,65 @@
-import { WordAnalysis, ExampleItem } from '../types';
+import { WordAnalysis } from '../types';
 
 export const API_KEY_STORAGE_KEY = 'wordflow_user_gemini_api_key';
 
+export function cleanApiKey(rawKey: string): string {
+  if (!rawKey) return '';
+  // Remove spaces, newlines, and surrounding quotes
+  let cleaned = rawKey.trim();
+  if ((cleaned.startsWith('"') && cleaned.endsWith('"')) || (cleaned.startsWith("'") && cleaned.endsWith("'"))) {
+    cleaned = cleaned.slice(1, -1).trim();
+  }
+  return cleaned;
+}
+
 export function getStoredApiKey(): string {
   if (typeof window === 'undefined') return '';
-  return localStorage.getItem(API_KEY_STORAGE_KEY) || '';
+  return cleanApiKey(localStorage.getItem(API_KEY_STORAGE_KEY) || '');
 }
 
 export function saveStoredApiKey(key: string): void {
   if (typeof window === 'undefined') return;
-  if (key.trim()) {
-    localStorage.setItem(API_KEY_STORAGE_KEY, key.trim());
+  const cleaned = cleanApiKey(key);
+  if (cleaned) {
+    localStorage.setItem(API_KEY_STORAGE_KEY, cleaned);
   } else {
     localStorage.removeItem(API_KEY_STORAGE_KEY);
   }
 }
 
-// Test if an API key is valid
-export async function testGeminiApiKey(apiKey: string): Promise<boolean> {
+// Test if an API key is valid using lightweight GET /models
+export async function testGeminiApiKey(apiKey: string): Promise<{ isValid: boolean; message: string }> {
+  const cleaned = cleanApiKey(apiKey);
+  if (!cleaned) {
+    return { isValid: false, message: 'API 키가 비어 있습니다.' };
+  }
+
+  if (cleaned.startsWith('sk-')) {
+    return {
+      isValid: false,
+      message: '입력하신 키는 OpenAI 키(sk-...)로 보입니다. Google AI Studio에서 발급받은 Gemini API 키(대개 AIzaSy...로 시작)를 입력해주세요.',
+    };
+  }
+
   try {
-    const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-flash-lite:generateContent?key=${apiKey.trim()}`;
-    const res = await fetch(url, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        contents: [{ parts: [{ text: 'ping' }] }],
-      }),
-    });
+    const url = `https://generativelanguage.googleapis.com/v1beta/models?key=${encodeURIComponent(cleaned)}`;
+    const res = await fetch(url);
     const data = await res.json();
-    return Boolean(data.candidates && data.candidates.length > 0);
-  } catch (e) {
-    return false;
+
+    if (res.ok && data.models) {
+      return { isValid: true, message: '✓ 유효한 Gemini API 키입니다!' };
+    }
+
+    const googleErrorMsg = data?.error?.message || `인증 실패 (HTTP ${res.status})`;
+    return {
+      isValid: false,
+      message: `구글 API 확인 실패: ${googleErrorMsg}`,
+    };
+  } catch (e: any) {
+    return {
+      isValid: false,
+      message: `네트워크 연결 오류 (${e?.message || '인터넷 연결을 확인해주세요'})`,
+    };
   }
 }
 

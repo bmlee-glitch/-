@@ -2,9 +2,10 @@ import React from 'react';
 import { Volume2, Sparkles, BookOpen, Search, HelpCircle, Settings2 } from 'lucide-react';
 
 interface HeaderProps {
-  activeTab: 'search' | 'vocab' | 'quiz';
-  setActiveTab: (tab: 'search' | 'vocab' | 'quiz') => void;
+  activeTab: 'search' | 'vocab' | 'studied' | 'quiz';
+  setActiveTab: (tab: 'search' | 'vocab' | 'studied' | 'quiz') => void;
   savedCount: number;
+  studiedCount: number;
   speechAccent: 'en-US' | 'en-GB';
   setSpeechAccent: (accent: 'en-US' | 'en-GB') => void;
   speechRate: number;
@@ -15,6 +16,7 @@ export const Header: React.FC<HeaderProps> = ({
   activeTab,
   setActiveTab,
   savedCount,
+  studiedCount,
   speechAccent,
   setSpeechAccent,
   speechRate,
@@ -59,7 +61,8 @@ export const Header: React.FC<HeaderProps> = ({
             }`}
           >
             <Search className="w-4 h-4" />
-            <span>단어 탐색</span>
+            <span className="hidden sm:inline">단어 탐색</span>
+            <span className="sm:hidden">탐색</span>
           </button>
 
           <button
@@ -71,7 +74,7 @@ export const Header: React.FC<HeaderProps> = ({
             }`}
           >
             <BookOpen className="w-4 h-4" />
-            <span>내 단어장</span>
+            <span>단어장</span>
             {savedCount > 0 && (
               <span
                 className={`text-[11px] font-bold px-1.5 py-0.2 rounded-full ${
@@ -86,6 +89,29 @@ export const Header: React.FC<HeaderProps> = ({
           </button>
 
           <button
+            onClick={() => setActiveTab('studied')}
+            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-semibold transition-all relative ${
+              activeTab === 'studied'
+                ? 'bg-indigo-600 text-white shadow-sm shadow-indigo-600/30'
+                : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
+            }`}
+          >
+            <Sparkles className="w-4 h-4 text-amber-500" />
+            <span>공부한 예문</span>
+            {studiedCount > 0 && (
+              <span
+                className={`text-[11px] font-bold px-1.5 py-0.2 rounded-full ${
+                  activeTab === 'studied'
+                    ? 'bg-white text-indigo-700'
+                    : 'bg-amber-100 text-amber-800'
+                }`}
+              >
+                {studiedCount}
+              </span>
+            )}
+          </button>
+
+          <button
             onClick={() => setActiveTab('quiz')}
             className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-semibold transition-all ${
               activeTab === 'quiz'
@@ -94,7 +120,8 @@ export const Header: React.FC<HeaderProps> = ({
             }`}
           >
             <HelpCircle className="w-4 h-4" />
-            <span>퀴즈 &amp; 복습</span>
+            <span className="hidden sm:inline">퀴즈 &amp; 복습</span>
+            <span className="sm:hidden">퀴즈</span>
           </button>
 
           {/* Settings Button */}

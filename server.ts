@@ -10,25 +10,18 @@ dotenv.config();
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
+// In-memory cache for fast lookups
+const wordCache = new Map<string, any>();
+
 async function startServer() {
   const app = express();
   const PORT = process.env.PORT ? parseInt(process.env.PORT, 10) : 3000;
 
   app.use(express.json());
 
-  const apiKey = process.env.GEMINI_API_KEY;
-  const ai = new GoogleGenAI({
-    apiKey: apiKey || '',
-    httpOptions: {
-      headers: {
-        'User-Agent': 'aistudio-build',
-      },
-    },
-  });
-
   // Health check endpoint
   app.get('/api/health', (req, res) => {
-    res.json({ status: 'ok', hasKey: Boolean(apiKey) });
+    res.json({ status: 'ok', hasKey: Boolean(process.env.GEMINI_API_KEY) });
   });
 
   // Word Analysis API
@@ -37,7 +30,7 @@ async function startServer() {
       const apiKey = process.env.GEMINI_API_KEY;
       if (!apiKey) {
         return res.status(401).json({
-          error: 'Gemini API 키가 설정되지 않았습니다. AI Studio 우측 상단의 Settings > Secrets 패널에서 GEMINI_API_KEY를 직접 등록해주세요.',
+          error: 'Gemini API 키가 설정되지 않았습니다. AI Studio 우측 상단의 Settings > Secrets 패널에서 GEMINI_API_KEY를 등록해주세요.',
         });
       }
 
@@ -46,7 +39,13 @@ async function startServer() {
         return res.status(400).json({ error: '분석할 단어나 문장을 입력해주세요.' });
       }
 
-      const cleanWord = word.trim();
+      const cleanWord = word.trim().toLowerCase();
+
+      // Return cached result if available
+      if (wordCache.has(cleanWord)) {
+        return res.json({ success: true, data: wordCache.get(cleanWord), cached: true });
+      }
+
       const ai = new GoogleGenAI({
         apiKey,
         httpOptions: {
@@ -56,17 +55,28 @@ async function startServer() {
         },
       });
 
-      const systemInstruction = `You are a world-class English-Korean bilingual lexicographer and ESL educator.
-When the user gives an English word, idiom, phrase, or spoken query, analyze it thoroughly.
-If the input was spoken or mistyped (e.g., "resilence" or "perseverence"), detect and use the correct canonical English word.
-Provide accurate IPA phonetic symbols, Korean phonetic approximation, parts of speech with Korean names, CEFR level (A1 to C2), Korean definitions, nuances in Korean, practical usage tips, diverse real-world example sentences with natural Korean translations, collocations, synonyms, antonyms, and a memorable etymology/origin tip in Korean.
-Output strictly in valid JSON adhering to the specified schema.`;
+      const systemInstruction = `You are an expert English-Korean lexicographer and bilingual ESL educator.
+Analyze the given English word or phrase thoroughly and practically.
+Provide:
+1. Canonical English word or phrase
+2. IPA phonetic transcription and natural Korean phonetic guide [한글발음]
+3. Parts of speech in Korean and English
+4. CEFR level (A1 to C2)
+5. Clear Korean meanings by priority
+6. Deep nuance explanation in warm, friendly Korean
+7. 2~3 practical usage tips in Korean
+8. 4~5 diverse, realistic example sentences with natural Korean translations across situations (daily, business, news/academic)
+9. Useful collocations with Korean translation
+10. Synonyms with nuance differences in Korean
+11. Antonyms with Korean translation
+12. Memorable etymology / memory hook in Korean.
+Output strictly in valid JSON.`;
 
-      const prompt = `Analyze this English word/phrase for a Korean learner: "${cleanWord}".
-Return a comprehensive lexical analysis with high-quality, practical example sentences and natural Korean translations.`;
+      const prompt = `Analyze this English word or phrase for a Korean learner: "${word.trim()}". Return comprehensive JSON.`;
 
+      // Use gemini-3.1-flash-lite for fast, reliable response under 3 seconds
       const response = await ai.models.generateContent({
-        model: 'gemini-3.8-flash',
+        model: 'gemini-3.1-flash-lite',
         contents: prompt,
         config: {
           systemInstruction,
@@ -74,47 +84,28 @@ Return a comprehensive lexical analysis with high-quality, practical example sen
           responseSchema: {
             type: Type.OBJECT,
             properties: {
-              word: { type: Type.STRING, description: 'Canonical English word or phrase' },
-              phonetic: { type: Type.STRING, description: 'IPA phonetic transcription e.g. /rɪˈzɪliənt/' },
-              koreanPronunciation: { type: Type.STRING, description: 'Korean phonetic transcription in brackets e.g. [리질리언트]' },
-              partsOfSpeech: {
-                type: Type.ARRAY,
-                items: { type: Type.STRING },
-                description: 'List of parts of speech in Korean and English e.g. ["형용사 (Adjective)"]',
-              },
-              cefrLevel: {
-                type: Type.STRING,
-                description: 'CEFR level: A1, A2, B1, B2, C1, or C2',
-              },
-              koreanMeanings: {
-                type: Type.ARRAY,
-                items: { type: Type.STRING },
-                description: 'Clear Korean meanings arranged by priority',
-              },
-              nuanceExplanation: {
-                type: Type.STRING,
-                description: 'Detailed explanation of subtle nuances, emotional color, and how native speakers view this word compared to general synonyms (written in warm, professional Korean)',
-              },
-              usageTips: {
-                type: Type.ARRAY,
-                items: { type: Type.STRING },
-                description: '2 to 3 practical Korean tips on prepositions, common grammar mistakes, or formality level',
-              },
+              word: { type: Type.STRING },
+              phonetic: { type: Type.STRING },
+              koreanPronunciation: { type: Type.STRING },
+              partsOfSpeech: { type: Type.ARRAY, items: { type: Type.STRING } },
+              cefrLevel: { type: Type.STRING },
+              koreanMeanings: { type: Type.ARRAY, items: { type: Type.STRING } },
+              nuanceExplanation: { type: Type.STRING },
+              usageTips: { type: Type.ARRAY, items: { type: Type.STRING } },
               examples: {
                 type: Type.ARRAY,
                 items: {
                   type: Type.OBJECT,
                   properties: {
                     id: { type: Type.STRING },
-                    sentence: { type: Type.STRING, description: 'Natural English example sentence' },
-                    koreanTranslation: { type: Type.STRING, description: 'Natural, idiomatic Korean translation' },
-                    situation: { type: Type.STRING, description: 'Context scenario e.g. 일상 대화, 비즈니스/직장, 뉴스/시사, 여행/식당' },
-                    difficulty: { type: Type.STRING, description: '기초, 중급, or 고급' },
-                    highlightWord: { type: Type.STRING, description: 'The exact form of the word used in the sentence' },
+                    sentence: { type: Type.STRING },
+                    koreanTranslation: { type: Type.STRING },
+                    situation: { type: Type.STRING },
+                    difficulty: { type: Type.STRING },
+                    highlightWord: { type: Type.STRING },
                   },
                   required: ['id', 'sentence', 'koreanTranslation', 'situation', 'difficulty'],
                 },
-                description: '4 to 6 diverse and realistic example sentences with context situations and Korean translations',
               },
               collocations: {
                 type: Type.ARRAY,
@@ -126,7 +117,6 @@ Return a comprehensive lexical analysis with high-quality, practical example sen
                   },
                   required: ['collocation', 'korean'],
                 },
-                description: '3 to 5 common English collocations or phrases with Korean translation',
               },
               synonyms: {
                 type: Type.ARRAY,
@@ -135,11 +125,10 @@ Return a comprehensive lexical analysis with high-quality, practical example sen
                   properties: {
                     word: { type: Type.STRING },
                     korean: { type: Type.STRING },
-                    difference: { type: Type.STRING, description: 'Short Korean explanation of nuance difference' },
+                    difference: { type: Type.STRING },
                   },
                   required: ['word', 'korean', 'difference'],
                 },
-                description: '2 to 4 synonyms with nuance comparison',
               },
               antonyms: {
                 type: Type.ARRAY,
@@ -151,12 +140,8 @@ Return a comprehensive lexical analysis with high-quality, practical example sen
                   },
                   required: ['word', 'korean'],
                 },
-                description: '1 to 3 antonyms with Korean translation',
               },
-              etymology: {
-                type: Type.STRING,
-                description: 'Short interesting etymology (word roots) or memory hook in Korean',
-              },
+              etymology: { type: Type.STRING },
             },
             required: [
               'word',
@@ -181,29 +166,97 @@ Return a comprehensive lexical analysis with high-quality, practical example sen
       const parsedData = JSON.parse(text);
       parsedData.generatedAt = Date.now();
 
+      // Store in memory cache
+      wordCache.set(cleanWord, parsedData);
+
       return res.json({ success: true, data: parsedData });
     } catch (err: any) {
       console.error('Error analyzing word:', err);
       return res.status(500).json({
-        error: '단어 분석 중 오류가 발생했습니다.',
+        error: '단어 분석 중 일시적인 오류가 발생했습니다. 다시 시도해주세요.',
         details: err?.message || '알 수 없는 오류',
       });
+    }
+  });
+
+  // Example Rewriting / Variation API (내가 공부한 예문 재작성)
+  app.post('/api/rewrite-example', async (req, res) => {
+    try {
+      const apiKey = process.env.GEMINI_API_KEY;
+      if (!apiKey) {
+        return res.status(401).json({ error: 'API 키가 필요합니다.' });
+      }
+
+      const { originalSentence, word, styleOrSituation } = req.body;
+      if (!originalSentence) {
+        return res.status(400).json({ error: '원문 문장을 제공해주세요.' });
+      }
+
+      const ai = new GoogleGenAI({
+        apiKey,
+        httpOptions: { headers: { 'User-Agent': 'aistudio-build' } },
+      });
+
+      const prompt = `You are an English writing mentor.
+Original English sentence: "${originalSentence}"
+Target vocabulary word to keep or emphasize: "${word || ''}"
+Desired adaptation / context: "${styleOrSituation || '내 상황에 맞게 실용적으로 재작성'}"
+
+Rewrite this sentence naturally to fit the desired context or style, keeping the sentence grammatically accurate and natural for native speakers.
+Provide:
+1. rewrittenSentence: The adapted English sentence
+2. koreanTranslation: Natural, idiomatic Korean translation
+3. nuanceTip: A short Korean tip explaining why this expression is useful in this context.
+Return valid JSON.`;
+
+      const response = await ai.models.generateContent({
+        model: 'gemini-3.1-flash-lite',
+        contents: prompt,
+        config: {
+          responseMimeType: 'application/json',
+          responseSchema: {
+            type: Type.OBJECT,
+            properties: {
+              rewrittenSentence: { type: Type.STRING },
+              koreanTranslation: { type: Type.STRING },
+              nuanceTip: { type: Type.STRING },
+            },
+            required: ['rewrittenSentence', 'koreanTranslation', 'nuanceTip'],
+          },
+        },
+      });
+
+      const data = JSON.parse(response.text?.trim() || '{}');
+      return res.json({ success: true, data });
+    } catch (err: any) {
+      console.error('Rewrite error:', err);
+      return res.status(500).json({ error: '예문 재작성 실패', details: err?.message });
     }
   });
 
   // Custom Situation Example Generator
   app.post('/api/custom-example', async (req, res) => {
     try {
+      const apiKey = process.env.GEMINI_API_KEY;
+      if (!apiKey) {
+        return res.status(401).json({ error: 'API 키가 필요합니다.' });
+      }
+
       const { word, situation } = req.body;
       if (!word || !situation) {
         return res.status(400).json({ error: '단어와 상황을 모두 제공해주세요.' });
       }
 
+      const ai = new GoogleGenAI({
+        apiKey,
+        httpOptions: { headers: { 'User-Agent': 'aistudio-build' } },
+      });
+
       const prompt = `Create 2 realistic English example sentences containing the word "${word}" specifically for the situation: "${situation}".
 Include natural, idiomatic Korean translations.`;
 
       const response = await ai.models.generateContent({
-        model: 'gemini-3.8-flash',
+        model: 'gemini-3.1-flash-lite',
         contents: prompt,
         config: {
           responseMimeType: 'application/json',
@@ -251,7 +304,7 @@ Include natural, idiomatic Korean translations.`;
   }
 
   app.listen(PORT, '0.0.0.0', () => {
-    console.log(`WordFlow Server is running on http://0.0.0.0:${PORT}`);
+    console.log(`WordFlow Server running on port ${PORT}`);
   });
 }
 

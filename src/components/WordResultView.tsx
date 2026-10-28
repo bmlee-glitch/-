@@ -22,6 +22,9 @@ interface WordResultViewProps {
   isSaved: boolean;
   onToggleSave: () => void;
   onPracticeSpeaking: (targetText: string, phonetic?: string, meaning?: string) => void;
+  onRewriteExample: (example: ExampleItem, word: string) => void;
+  onQuickSaveExample: (example: ExampleItem, word: string) => void;
+  savedSentenceIds: Set<string>;
   speechAccent?: 'en-US' | 'en-GB';
   speechRate?: number;
   onSelectWord?: (word: string) => void;
@@ -32,6 +35,9 @@ export const WordResultView: React.FC<WordResultViewProps> = ({
   isSaved,
   onToggleSave,
   onPracticeSpeaking,
+  onRewriteExample,
+  onQuickSaveExample,
+  savedSentenceIds,
   speechAccent = 'en-US',
   speechRate = 0.95,
   onSelectWord,
@@ -425,9 +431,46 @@ export const WordResultView: React.FC<WordResultViewProps> = ({
                 </p>
 
                 {/* Korean Translation */}
-                <p className="text-xs sm:text-sm font-semibold text-slate-700 leading-relaxed">
+                <p className="text-xs sm:text-sm font-semibold text-slate-700 leading-relaxed mb-3">
                   {item.koreanTranslation}
                 </p>
+
+                {/* Example Card Action Footer */}
+                <div className="pt-2 border-t border-slate-200/60 flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={() => onQuickSaveExample(item, data.word)}
+                      className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-bold transition-all ${
+                        savedSentenceIds.has(item.sentence)
+                          ? 'bg-amber-100 text-amber-800'
+                          : 'bg-white hover:bg-slate-100 text-slate-600 border border-slate-200'
+                      }`}
+                      title={savedSentenceIds.has(item.sentence) ? '보관함에 저장됨' : '예문 보관함에 저장'}
+                    >
+                      <BookmarkCheck className={`w-3.5 h-3.5 ${savedSentenceIds.has(item.sentence) ? 'text-amber-600' : 'text-slate-400'}`} />
+                      <span>{savedSentenceIds.has(item.sentence) ? '보관됨' : '예문 보관'}</span>
+                    </button>
+
+                    <button
+                      onClick={() => onRewriteExample(item, data.word)}
+                      className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-bold bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 transition-colors"
+                      title="내 상황에 맞게 다시 쓰고 저장하기"
+                    >
+                      <Sparkles className="w-3.5 h-3.5 text-indigo-600" />
+                      <span>내 상황으로 재작성</span>
+                    </button>
+                  </div>
+
+                  <button
+                    onClick={() => {
+                      navigator.clipboard.writeText(`${item.sentence}\n${item.koreanTranslation}`);
+                      alert('예문이 복사되었습니다.');
+                    }}
+                    className="text-[11px] text-slate-600 hover:text-slate-900 font-semibold"
+                  >
+                    복사
+                  </button>
+                </div>
               </div>
             );
           })}

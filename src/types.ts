@@ -53,6 +53,19 @@ export interface SavedWord {
   fullData?: WordAnalysis;
 }
 
+export interface StudiedSentence {
+  id: string;
+  word: string;
+  originalSentence: string;
+  originalKorean: string;
+  customSentence?: string;
+  customKorean?: string;
+  situation: string;
+  userNotes?: string;
+  savedAt: number;
+  isBookmarked: boolean;
+}
+
 export interface PronunciationAttempt {
   target: string;
   spoken: string;
